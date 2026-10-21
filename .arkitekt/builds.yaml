@@ -1,0 +1,512 @@
+builds:
+- build_id: 48df25df-84f0-4892-934b-7580d88ba790
+  build_run: 9c323c24-0cf1-47d9-896a-93fe3d857470
+  capabilities: []
+  description: This is a vanilla flavour
+  flavour: vanilla
+  inspection:
+    assets: []
+    bloks:
+    - context: LOGO
+      default: true
+      demoState: {}
+      dependencies: []
+      description: A Leica LIF file opening into a stack of planes in three channels.
+      key: lif_converter_logo
+      source: "\n<SVG viewBox=\"0 0 64 64\" title=\"lif-converter\">\n  <Defs>\n \
+        \   <LinearGradient id=\"ground\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\">\n \
+        \     <Stop offset=\"0\" stopColor=\"#111827\" />\n      <Stop offset=\"1\"\
+        \ stopColor=\"#1e293b\" />\n    </LinearGradient>\n  </Defs>\n  <Rect x=\"\
+        0\" y=\"0\" width=\"64\" height=\"64\" rx=\"14\" fill=\"url(#ground)\" />\n\
+        \  <Path d=\"M9 11a3 3 0 0 1 3-3h12l7 7v17a3 3 0 0 1-3 3H12a3 3 0 0 1-3-3Z\"\
+        \ fill=\"#e2e8f0\" />\n  <Path d=\"M24 8v5a2 2 0 0 0 2 2h5\" fill=\"#94a3b8\"\
+        \ />\n  <G fill=\"#64748b\">\n    <Rect x=\"13\" y=\"19\" width=\"12\" height=\"\
+        2.5\" rx=\"1.25\" />\n    <Rect x=\"13\" y=\"24\" width=\"8\" height=\"2.5\"\
+        \ rx=\"1.25\" />\n  </G>\n  <Path d=\"M35 12.5h9a5 5 0 0 1 5 5V21\" fill=\"\
+        none\" stroke=\"#94a3b8\" strokeWidth=\"2.4\" strokeLinecap=\"round\" />\n\
+        \  <Path d=\"M45.5 18.5 49 22l3.5-3.5\" fill=\"none\" stroke=\"#94a3b8\" strokeWidth=\"\
+        2.4\" strokeLinecap=\"round\" strokeLinejoin=\"round\" />\n  <G stroke=\"\
+        #0b1220\" strokeWidth=\"1.6\" strokeLinejoin=\"round\">\n    <Polygon points=\"\
+        40,38 57,46 40,54 23,46\" fill=\"#38bdf8\" />\n    <Polygon points=\"40,32\
+        \ 57,40 40,48 23,40\" fill=\"#f472b6\" />\n    <Polygon points=\"40,26 57,34\
+        \ 40,42 23,34\" fill=\"#34d399\" />\n  </G>\n  <Rect x=\"0.5\" y=\"0.5\" width=\"\
+        63\" height=\"63\" rx=\"13.5\" fill=\"none\" stroke=\"#94a3b8\" strokeOpacity=\"\
+        0.3\" strokeWidth=\"1\" />\n</SVG>\n"
+    - context: ACTION_LOGO
+      default: false
+      demoState:
+        task: null
+      dependencies: []
+      key: lif_converter_convert_lif_file_to_datasets
+      source: "\n<ActionLogo viewBox=\"0 0 24 24\" title=\"Convert Leica LIF file\
+        \ to Datasets\">\n  <Path d=\"M3 4a1.5 1.5 0 0 1 1.5-1.5H9l3 3V12a1.5 1.5\
+        \ 0 0 1-1.5 1.5h-6A1.5 1.5 0 0 1 3 12Z\" fill=\"surface\" stroke=\"ink\" strokeWidth=\"\
+        1.5\" strokeLinejoin=\"round\" />\n  <Path d=\"M9 2.5V5.5H12\" fill=\"none\"\
+        \ stroke=\"ink\" strokeWidth=\"1.5\" strokeLinejoin=\"round\" />\n  <Path\
+        \ d=\"M14 4h3a2 2 0 0 1 2 2v1.5\" fill=\"none\" stroke=\"brand-strong\" strokeWidth=\"\
+        1.6\" strokeLinecap=\"round\" animate=\"draw\" />\n  <Path d=\"M17.25 6 19\
+        \ 7.75 20.75 6\" fill=\"none\" stroke=\"brand-strong\" strokeWidth=\"1.6\"\
+        \ strokeLinecap=\"round\" strokeLinejoin=\"round\" />\n  <G stroke=\"ink\"\
+        \ strokeWidth=\"1.4\" strokeLinejoin=\"round\">\n    <Polygon points=\"15,15.5\
+        \ 21.5,18.75 15,22 8.5,18.75\" fill=\"brand-soft\" animate=\"float\" animateDelay=\"\
+        0.3\" />\n    <Polygon points=\"15,12.5 21.5,15.75 15,19 8.5,15.75\" fill=\"\
+        brand\" animate=\"float\" animateDelay=\"0.15\" />\n    <Polygon points=\"\
+        15,9.5 21.5,12.75 15,16 8.5,12.75\" fill=\"brand-strong\" animate=\"float\"\
+        \ />\n  </G>\n</ActionLogo>\n"
+    description: 'Converts Leica LIF files into mikro datasets natively, one per image
+      (one per tile for a tile scan), with Leica''s own metadata: sequential settings,
+      detectors, laser lines, pinhole, display windows and stage positions.'
+    implementations:
+    - codeHash: 64d143f5ddf93ed116649e51ef9efbb5b7aab3642ac15f76ae7ccf0d7b647ae2
+      definition:
+        allowProbe: false
+        args:
+        - effects: []
+          identifier: '@mikro/file'
+          key: file
+          kind: STRUCTURE
+          nullable: false
+          validators: []
+          widget:
+            dependencies: []
+            kind: SEARCH
+            query: "query SearchFiles($search: String, $values: [ID!], $limit: Int,\
+              \ $offset: Int = 0) {\n  options: files(\n    filters: { search: $search,\
+              \ ids: $values }\n    pagination: { limit: $limit, offset: $offset }\n\
+              \  ) {\n    value: id\n    label: name\n    __typename\n  }\n}"
+            ward: mikro
+        - default: 0
+          effects: []
+          key: levels
+          kind: INT
+          nullable: true
+          validators: []
+        - default: max
+          effects: []
+          key: method
+          kind: STRING
+          nullable: true
+          validators: []
+        - default: true
+          effects: []
+          key: stage_scene
+          kind: BOOL
+          nullable: true
+          validators: []
+        - default: ''
+          effects: []
+          key: world_name
+          kind: STRING
+          nullable: true
+          validators: []
+        catalogs: []
+        collections:
+        - conversion
+        description: "Read a Leica LIF file natively (no Bio-Formats) and upload every\
+          \ image as a pyramided dataset \u2014 every tile, for a tile scan \u2014\
+          \ with Leica's own metadata: sequential settings, detectors, laser lines,\
+          \ pinhole and display windows, placed in a shared micrometer space at its\
+          \ stage position and staged in a scene of its own. Tiles whose merged image\
+          \ is in the file are uploaded but not staged."
+        idempotent: false
+        isDev: false
+        isTestFor: []
+        key: convert_lif_file_to_datasets
+        kind: FUNCTION
+        name: Convert Leica LIF file to Datasets
+        portGroups: []
+        pure: false
+        returns:
+        - children:
+          - effects: []
+            identifier: '@mikro/arraydataset'
+            key: '...'
+            kind: STRUCTURE
+            nullable: false
+          effects: []
+          key: return0
+          kind: LIST
+          nullable: false
+        stateful: false
+        version: '1'
+      dependencies: []
+      effects: UNKNOWN
+      execution: PLAIN
+      interface: convert_lif_file_to_datasets
+      locks: []
+      logo: lif_converter_convert_lif_file_to_datasets
+      manipulates: []
+      needsToken: true
+      optimistics: []
+      tracks: []
+    locks: []
+    requirements:
+    - description: Where the user's images and their metadata live
+      key: mikro
+      optional: false
+      service: live.arkitekt.mikro
+    - description: Where this app's actions are offered and assigned
+      key: rekuest
+      optional: false
+      service: live.arkitekt.rekuest
+    - description: Where the user's files are stored
+      key: s3
+      optional: false
+      service: live.arkitekt.s3
+    size: 394998498
+    states: []
+  manifest:
+    author: jhnnsrs
+    description: 'Converts Leica LIF files into mikro datasets natively, one per image
+      (one per tile for a tile scan), with Leica''s own metadata: sequential settings,
+      detectors, laser lines, pinhole, display windows and stage positions.'
+    entrypoint: app
+    identifier: lif-converter
+    scopes:
+    - read
+    - write
+    version: 0.0.1
+  platforms:
+  - linux/amd64
+  selectors: []
+- build_id: 05405d3b-1de2-4840-bf65-ce937827a9fa
+  build_run: f759e533-1640-4a39-9310-848e1867f3b9
+  capabilities: []
+  description: This is a vanilla flavour
+  flavour: vanilla
+  inspection:
+    assets: []
+    bloks:
+    - context: LOGO
+      default: true
+      demoState: {}
+      dependencies: []
+      description: A Leica LIF file opening into a stack of planes in three channels.
+      key: lif_converter_logo
+      source: "\n<SVG viewBox=\"0 0 64 64\" title=\"lif-converter\">\n  <Defs>\n \
+        \   <LinearGradient id=\"ground\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\">\n \
+        \     <Stop offset=\"0\" stopColor=\"#111827\" />\n      <Stop offset=\"1\"\
+        \ stopColor=\"#1e293b\" />\n    </LinearGradient>\n  </Defs>\n  <Rect x=\"\
+        0\" y=\"0\" width=\"64\" height=\"64\" rx=\"14\" fill=\"url(#ground)\" />\n\
+        \  <Path d=\"M9 11a3 3 0 0 1 3-3h12l7 7v17a3 3 0 0 1-3 3H12a3 3 0 0 1-3-3Z\"\
+        \ fill=\"#e2e8f0\" />\n  <Path d=\"M24 8v5a2 2 0 0 0 2 2h5\" fill=\"#94a3b8\"\
+        \ />\n  <G fill=\"#64748b\">\n    <Rect x=\"13\" y=\"19\" width=\"12\" height=\"\
+        2.5\" rx=\"1.25\" />\n    <Rect x=\"13\" y=\"24\" width=\"8\" height=\"2.5\"\
+        \ rx=\"1.25\" />\n  </G>\n  <Path d=\"M35 12.5h9a5 5 0 0 1 5 5V21\" fill=\"\
+        none\" stroke=\"#94a3b8\" strokeWidth=\"2.4\" strokeLinecap=\"round\" />\n\
+        \  <Path d=\"M45.5 18.5 49 22l3.5-3.5\" fill=\"none\" stroke=\"#94a3b8\" strokeWidth=\"\
+        2.4\" strokeLinecap=\"round\" strokeLinejoin=\"round\" />\n  <G stroke=\"\
+        #0b1220\" strokeWidth=\"1.6\" strokeLinejoin=\"round\">\n    <Polygon points=\"\
+        40,38 57,46 40,54 23,46\" fill=\"#38bdf8\" />\n    <Polygon points=\"40,32\
+        \ 57,40 40,48 23,40\" fill=\"#f472b6\" />\n    <Polygon points=\"40,26 57,34\
+        \ 40,42 23,34\" fill=\"#34d399\" />\n  </G>\n  <Rect x=\"0.5\" y=\"0.5\" width=\"\
+        63\" height=\"63\" rx=\"13.5\" fill=\"none\" stroke=\"#94a3b8\" strokeOpacity=\"\
+        0.3\" strokeWidth=\"1\" />\n</SVG>\n"
+    - context: ACTION_LOGO
+      default: false
+      demoState:
+        task: null
+      dependencies: []
+      key: lif_converter_convert_lif_file_to_datasets
+      source: "\n<ActionLogo viewBox=\"0 0 24 24\" title=\"Convert Leica LIF file\
+        \ to Datasets\">\n  <Path d=\"M3 4a1.5 1.5 0 0 1 1.5-1.5H9l3 3V12a1.5 1.5\
+        \ 0 0 1-1.5 1.5h-6A1.5 1.5 0 0 1 3 12Z\" fill=\"surface\" stroke=\"ink\" strokeWidth=\"\
+        1.5\" strokeLinejoin=\"round\" />\n  <Path d=\"M9 2.5V5.5H12\" fill=\"none\"\
+        \ stroke=\"ink\" strokeWidth=\"1.5\" strokeLinejoin=\"round\" />\n  <Path\
+        \ d=\"M14 4h3a2 2 0 0 1 2 2v1.5\" fill=\"none\" stroke=\"brand-strong\" strokeWidth=\"\
+        1.6\" strokeLinecap=\"round\" animate=\"draw\" />\n  <Path d=\"M17.25 6 19\
+        \ 7.75 20.75 6\" fill=\"none\" stroke=\"brand-strong\" strokeWidth=\"1.6\"\
+        \ strokeLinecap=\"round\" strokeLinejoin=\"round\" />\n  <G stroke=\"ink\"\
+        \ strokeWidth=\"1.4\" strokeLinejoin=\"round\">\n    <Polygon points=\"15,15.5\
+        \ 21.5,18.75 15,22 8.5,18.75\" fill=\"brand-soft\" animate=\"float\" animateDelay=\"\
+        0.3\" />\n    <Polygon points=\"15,12.5 21.5,15.75 15,19 8.5,15.75\" fill=\"\
+        brand\" animate=\"float\" animateDelay=\"0.15\" />\n    <Polygon points=\"\
+        15,9.5 21.5,12.75 15,16 8.5,12.75\" fill=\"brand-strong\" animate=\"float\"\
+        \ />\n  </G>\n</ActionLogo>\n"
+    description: 'Converts Leica LIF files into mikro datasets natively, one per image
+      (one per tile for a tile scan), with Leica''s own metadata: sequential settings,
+      detectors, laser lines, pinhole, display windows and stage positions.'
+    implementations:
+    - codeHash: 64d143f5ddf93ed116649e51ef9efbb5b7aab3642ac15f76ae7ccf0d7b647ae2
+      definition:
+        allowProbe: false
+        args:
+        - effects: []
+          identifier: '@mikro/file'
+          key: file
+          kind: STRUCTURE
+          nullable: false
+          validators: []
+          widget:
+            dependencies: []
+            kind: SEARCH
+            query: "query SearchFiles($search: String, $values: [ID!], $limit: Int,\
+              \ $offset: Int = 0) {\n  options: files(\n    filters: { search: $search,\
+              \ ids: $values }\n    pagination: { limit: $limit, offset: $offset }\n\
+              \  ) {\n    value: id\n    label: name\n    __typename\n  }\n}"
+            ward: mikro
+        - default: 0
+          effects: []
+          key: levels
+          kind: INT
+          nullable: true
+          validators: []
+        - default: max
+          effects: []
+          key: method
+          kind: STRING
+          nullable: true
+          validators: []
+        - default: true
+          effects: []
+          key: stage_scene
+          kind: BOOL
+          nullable: true
+          validators: []
+        - default: ''
+          effects: []
+          key: world_name
+          kind: STRING
+          nullable: true
+          validators: []
+        catalogs: []
+        collections:
+        - conversion
+        description: "Read a Leica LIF file natively (no Bio-Formats) and upload every\
+          \ image as a pyramided dataset \u2014 every tile, for a tile scan \u2014\
+          \ with Leica's own metadata: sequential settings, detectors, laser lines,\
+          \ pinhole and display windows, placed in a shared micrometer space at its\
+          \ stage position and staged in a scene of its own. Tiles whose merged image\
+          \ is in the file are uploaded but not staged."
+        idempotent: false
+        isDev: false
+        isTestFor: []
+        key: convert_lif_file_to_datasets
+        kind: FUNCTION
+        name: Convert Leica LIF file to Datasets
+        portGroups: []
+        pure: false
+        returns:
+        - children:
+          - effects: []
+            identifier: '@mikro/arraydataset'
+            key: '...'
+            kind: STRUCTURE
+            nullable: false
+          effects: []
+          key: return0
+          kind: LIST
+          nullable: false
+        stateful: false
+        version: '1'
+      dependencies: []
+      effects: UNKNOWN
+      execution: PLAIN
+      interface: convert_lif_file_to_datasets
+      locks: []
+      logo: lif_converter_convert_lif_file_to_datasets
+      manipulates: []
+      needsToken: true
+      optimistics: []
+      tracks: []
+    locks: []
+    requirements:
+    - description: Where the user's images and their metadata live
+      key: mikro
+      optional: false
+      service: live.arkitekt.mikro
+    - description: Where this app's actions are offered and assigned
+      key: rekuest
+      optional: false
+      service: live.arkitekt.rekuest
+    - description: Where the user's files are stored
+      key: s3
+      optional: false
+      service: live.arkitekt.s3
+    size: 395005837
+    states: []
+  manifest:
+    author: jhnnsrs
+    description: 'Converts Leica LIF files into mikro datasets natively, one per image
+      (one per tile for a tile scan), with Leica''s own metadata: sequential settings,
+      detectors, laser lines, pinhole, display windows and stage positions.'
+    entrypoint: app
+    identifier: lif-converter
+    scopes:
+    - read
+    - write
+    version: 0.0.1
+  platforms:
+  - linux/amd64
+  selectors: []
+- build_id: fee52550-238e-4803-9002-60ba75b19dd7
+  build_run: 7dd9abda-4d45-4419-9824-ae5ded0fb3f0
+  capabilities: []
+  description: This is a vanilla flavour
+  flavour: vanilla
+  inspection:
+    assets: []
+    bloks:
+    - context: LOGO
+      default: true
+      demoState: {}
+      dependencies: []
+      description: A Leica LIF file opening into a stack of planes in three channels.
+      key: lif_converter_logo
+      source: "\n<SVG viewBox=\"0 0 64 64\" title=\"lif-converter\">\n  <Defs>\n \
+        \   <LinearGradient id=\"ground\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\">\n \
+        \     <Stop offset=\"0\" stopColor=\"#111827\" />\n      <Stop offset=\"1\"\
+        \ stopColor=\"#1e293b\" />\n    </LinearGradient>\n  </Defs>\n  <Rect x=\"\
+        0\" y=\"0\" width=\"64\" height=\"64\" rx=\"14\" fill=\"url(#ground)\" />\n\
+        \  <Path d=\"M9 11a3 3 0 0 1 3-3h12l7 7v17a3 3 0 0 1-3 3H12a3 3 0 0 1-3-3Z\"\
+        \ fill=\"#e2e8f0\" />\n  <Path d=\"M24 8v5a2 2 0 0 0 2 2h5\" fill=\"#94a3b8\"\
+        \ />\n  <G fill=\"#64748b\">\n    <Rect x=\"13\" y=\"19\" width=\"12\" height=\"\
+        2.5\" rx=\"1.25\" />\n    <Rect x=\"13\" y=\"24\" width=\"8\" height=\"2.5\"\
+        \ rx=\"1.25\" />\n  </G>\n  <Path d=\"M35 12.5h9a5 5 0 0 1 5 5V21\" fill=\"\
+        none\" stroke=\"#94a3b8\" strokeWidth=\"2.4\" strokeLinecap=\"round\" />\n\
+        \  <Path d=\"M45.5 18.5 49 22l3.5-3.5\" fill=\"none\" stroke=\"#94a3b8\" strokeWidth=\"\
+        2.4\" strokeLinecap=\"round\" strokeLinejoin=\"round\" />\n  <G stroke=\"\
+        #0b1220\" strokeWidth=\"1.6\" strokeLinejoin=\"round\">\n    <Polygon points=\"\
+        40,38 57,46 40,54 23,46\" fill=\"#38bdf8\" />\n    <Polygon points=\"40,32\
+        \ 57,40 40,48 23,40\" fill=\"#f472b6\" />\n    <Polygon points=\"40,26 57,34\
+        \ 40,42 23,34\" fill=\"#34d399\" />\n  </G>\n  <Rect x=\"0.5\" y=\"0.5\" width=\"\
+        63\" height=\"63\" rx=\"13.5\" fill=\"none\" stroke=\"#94a3b8\" strokeOpacity=\"\
+        0.3\" strokeWidth=\"1\" />\n</SVG>\n"
+    - context: ACTION_LOGO
+      default: false
+      demoState:
+        task: null
+      dependencies: []
+      key: lif_converter_convert_lif_file_to_datasets
+      source: "\n<ActionLogo viewBox=\"0 0 24 24\" title=\"Convert Leica LIF file\
+        \ to Datasets\">\n  <Path d=\"M3 4a1.5 1.5 0 0 1 1.5-1.5H9l3 3V12a1.5 1.5\
+        \ 0 0 1-1.5 1.5h-6A1.5 1.5 0 0 1 3 12Z\" fill=\"surface\" stroke=\"ink\" strokeWidth=\"\
+        1.5\" strokeLinejoin=\"round\" />\n  <Path d=\"M9 2.5V5.5H12\" fill=\"none\"\
+        \ stroke=\"ink\" strokeWidth=\"1.5\" strokeLinejoin=\"round\" />\n  <Path\
+        \ d=\"M14 4h3a2 2 0 0 1 2 2v1.5\" fill=\"none\" stroke=\"brand-strong\" strokeWidth=\"\
+        1.6\" strokeLinecap=\"round\" animate=\"draw\" />\n  <Path d=\"M17.25 6 19\
+        \ 7.75 20.75 6\" fill=\"none\" stroke=\"brand-strong\" strokeWidth=\"1.6\"\
+        \ strokeLinecap=\"round\" strokeLinejoin=\"round\" />\n  <G stroke=\"ink\"\
+        \ strokeWidth=\"1.4\" strokeLinejoin=\"round\">\n    <Polygon points=\"15,15.5\
+        \ 21.5,18.75 15,22 8.5,18.75\" fill=\"brand-soft\" animate=\"float\" animateDelay=\"\
+        0.3\" />\n    <Polygon points=\"15,12.5 21.5,15.75 15,19 8.5,15.75\" fill=\"\
+        brand\" animate=\"float\" animateDelay=\"0.15\" />\n    <Polygon points=\"\
+        15,9.5 21.5,12.75 15,16 8.5,12.75\" fill=\"brand-strong\" animate=\"float\"\
+        \ />\n  </G>\n</ActionLogo>\n"
+    description: 'Converts Leica LIF files into mikro datasets natively, one per image
+      (one per tile for a tile scan), with Leica''s own metadata: sequential settings,
+      detectors, laser lines, pinhole, display windows and stage positions.'
+    implementations:
+    - codeHash: 64d143f5ddf93ed116649e51ef9efbb5b7aab3642ac15f76ae7ccf0d7b647ae2
+      definition:
+        allowProbe: false
+        args:
+        - effects: []
+          identifier: '@mikro/file'
+          key: file
+          kind: STRUCTURE
+          nullable: false
+          validators: []
+          widget:
+            dependencies: []
+            kind: SEARCH
+            query: "query SearchFiles($search: String, $values: [ID!], $limit: Int,\
+              \ $offset: Int = 0) {\n  options: files(\n    filters: { search: $search,\
+              \ ids: $values }\n    pagination: { limit: $limit, offset: $offset }\n\
+              \  ) {\n    value: id\n    label: name\n    __typename\n  }\n}"
+            ward: mikro
+        - default: 0
+          effects: []
+          key: levels
+          kind: INT
+          nullable: true
+          validators: []
+        - default: max
+          effects: []
+          key: method
+          kind: STRING
+          nullable: true
+          validators: []
+        - default: true
+          effects: []
+          key: stage_scene
+          kind: BOOL
+          nullable: true
+          validators: []
+        - default: ''
+          effects: []
+          key: world_name
+          kind: STRING
+          nullable: true
+          validators: []
+        catalogs: []
+        collections:
+        - conversion
+        description: "Read a Leica LIF file natively (no Bio-Formats) and upload every\
+          \ image as a pyramided dataset \u2014 every tile, for a tile scan \u2014\
+          \ with Leica's own metadata: sequential settings, detectors, laser lines,\
+          \ pinhole and display windows, placed in a shared micrometer space at its\
+          \ stage position and staged in a scene of its own. Tiles whose merged image\
+          \ is in the file are uploaded but not staged."
+        idempotent: false
+        isDev: false
+        isTestFor: []
+        key: convert_lif_file_to_datasets
+        kind: FUNCTION
+        name: Convert Leica LIF file to Datasets
+        portGroups: []
+        pure: false
+        returns:
+        - children:
+          - effects: []
+            identifier: '@mikro/arraydataset'
+            key: '...'
+            kind: STRUCTURE
+            nullable: false
+          effects: []
+          key: return0
+          kind: LIST
+          nullable: false
+        stateful: false
+        version: '1'
+      dependencies: []
+      effects: UNKNOWN
+      execution: PLAIN
+      interface: convert_lif_file_to_datasets
+      locks: []
+      logo: lif_converter_convert_lif_file_to_datasets
+      manipulates: []
+      needsToken: true
+      optimistics: []
+      tracks: []
+    locks: []
+    requirements:
+    - description: Where the user's images and their metadata live
+      key: mikro
+      optional: false
+      service: live.arkitekt.mikro
+    - description: Where this app's actions are offered and assigned
+      key: rekuest
+      optional: false
+      service: live.arkitekt.rekuest
+    - description: Where the user's files are stored
+      key: s3
+      optional: false
+      service: live.arkitekt.s3
+    size: 395013113
+    states: []
+  manifest:
+    author: jhnnsrs
+    description: 'Converts Leica LIF files into mikro datasets natively, one per image
+      (one per tile for a tile scan), with Leica''s own metadata: sequential settings,
+      detectors, laser lines, pinhole, display windows and stage positions.'
+    entrypoint: app
+    identifier: lif-converter
+    scopes:
+    - read
+    - write
+    version: 0.0.1
+  platforms:
+  - linux/amd64
+  selectors: []
+latest_build_run: 7dd9abda-4d45-4419-9824-ae5ded0fb3f0

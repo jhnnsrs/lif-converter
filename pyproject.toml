@@ -1,0 +1,33 @@
+[project]
+name = "lif-converter"
+version = "0.1.0"
+description = "Converts Leica LIF files into mikro datasets natively, with Leica's own metadata"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "arkitekt[all]>=7.2.1",
+    "dask[array]>=2026.8.0",
+    "kanne>=2.6.0",
+    "liffile>=2026.10.14",
+    "mikro>=9.0.0",
+    "numpy>=2.5.4",
+    "xarray>=2026.9.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+addopts = "-m 'not hub'"
+
+[tool.semantic_release]
+version_variables = ["app.py:__version__"]
+commit_message = "chore(release): {version} [skip ci]"
+tag_format = "v{version}"
+allow_zero_version = true
+
+[tool.semantic_release.branches.release]
+match = "main"
+prerelease = false
