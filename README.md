@@ -11,14 +11,19 @@ with [liffile](https://pypi.org/project/liffile/):
   one plane at a time. Nothing is decoded into RAM, and the whole file is never copied to
   a scratch Zarr. Only pyramid level 1 (¼ of the base, ⅛ for a z-stack) is persisted,
   next to the download, so that the coarser levels do not each re-read the base.
-- **Leica's own metadata.** The image's XML element goes on the origin anchor verbatim,
+- **Leica's own metadata.** The image's XML element goes on the image anchor verbatim,
   as `{"format": "leica-lif", "xml": …}` in the anchor's metadata blob. Each channel
   anchor gets its dye and its LUT. It also gets the sequential setting and detector that
   recorded it (gain, offset, photon-counting mode, detection band), the AOTF laser lines
   that fired, and the pinhole in µm and Airy units, as device settings and a light path.
-  The origin anchor carries the stand, objective (NA, immersion), zoom, scan speed, dwell
-  time, averaging and the stage. `leica_metadata.py` documents where in the XML each of
-  these lives.
+  The image anchor pins no axis, so it holds over the whole image. It carries the stand,
+  objective (NA, immersion), zoom, scan speed, dwell time, averaging and the stage. It also
+  carries the acquisition window, which runs from the first frame's time stamp to the last
+  (UTC). A tile gets its own frames' window, and a merged image gets its scan's window, since
+  LAS X stamps the merged image with the first tile's frames only. A time series also
+  states each timepoint's own window on its `{t: i}` anchor, so irregular intervals
+  survive. mikro derives the dataset's `acquisitionStart`/`acquisitionEnd` from these
+  windows. `leica_metadata.py` documents where in the XML each of these lives.
 - **Leica-derived display.** Each channel is drawn in its LAS X LUT colour and opens on
   the LAS X display window where one was saved, as a fraction of the recorded bit depth.
   Only otherwise does it fall back to p1/p99 of what the layer shows.
@@ -46,7 +51,7 @@ Common to all models:
 - Transmitted (TLD) detectors sit behind the sample.
 - An element the file names is recorded. One only the design implies (the scanner, the spectral selector, a coupling, the AOBS of a STELLARIS that did not set it) is labelled "(implied)" and carries no numbers.
 
-mikro has no instrument entity yet, so the model is recorded as settings on the origin anchor's `microscope` device:
+mikro has no instrument entity yet, so the model is recorded as settings on the image anchor's `microscope` device:
 - `instrument-model`, `family`, `variant` and `system-type`;
 - the system as `model` and the stand as `stand`.
 
@@ -72,7 +77,7 @@ positions are recorded.
 ## The action
 
 **Convert Leica LIF file to Datasets** (`convert_lif_file_to_datasets`) takes a mikro
-`File`, plus `levels` (0 = auto), `method`, `stage_scene` and `world_name`. It returns the
+`File`, plus `levels` (0 = auto), `method`, `stage_scene`, `world_name` and `snapshot` (on by default: each staged scene gets a maximum projection of its layers as its snapshot). Each staged scene is also set as the default scene of every dataset in it, so it is the scene a dataset opens in and where its thumbnail comes from. It returns the
 datasets it made. If one image or tile fails, it is logged and the rest still convert.
 FLIM images, and XLEF/XLIF experiments (whose sidecar files are not uploaded), are
 refused.

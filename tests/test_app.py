@@ -160,6 +160,78 @@ class FakeLifImage:
         self.tilescan = tilescan
 
 
+class StampedImage:
+    """What `acquisition_window` reads of a LIF image: its dimensions and frame stamps."""
+
+    def __init__(self, sizes, stamps):
+        self.dims = tuple(sizes)
+        self.sizes = dict(sizes)
+        self.timestamps = None if stamps is None else np.array(stamps, dtype="datetime64[ms]")
+
+
+def stamp(second):
+    return np.datetime64("2026-03-19T17:00:00") + np.timedelta64(second, "s")
+
+
+def utc(second):
+    import datetime
+
+    return datetime.datetime(2026, 3, 19, 17, 0, second, tzinfo=datetime.UTC)
+
+
+def test_an_images_window_runs_from_its_first_frame_to_its_last():
+    window = M.acquisition_window(StampedImage({"C": 3, "Y": 8, "X": 8}, [stamp(5), stamp(1), stamp(3)]), None)
+    assert (window.start, window.end) == (utc(1), utc(5))
+    assert window.start.utcoffset() is not None, "a FILETIME is UTC, and says so"
+
+
+def test_an_unstamped_image_states_no_window():
+    assert M.acquisition_window(StampedImage({"Y": 8, "X": 8}, None), None) is None
+    assert M.acquisition_window(StampedImage({"Y": 8, "X": 8}, []), None) is None
+
+
+def test_a_tile_states_its_own_frames():
+    # M outermost, two channels per tile: frames in the image's dimension order.
+    image = StampedImage({"M": 3, "C": 2, "Y": 8, "X": 8}, [stamp(s) for s in (0, 1, 10, 11, 20, 21)])
+    window = M.acquisition_window(image, 1)
+    assert (window.start, window.end) == (utc(10), utc(11))
+
+
+def test_a_tile_states_nothing_when_its_frames_cannot_be_told_apart():
+    image = StampedImage({"M": 3, "C": 2, "Y": 8, "X": 8}, [stamp(0), stamp(1)])
+    assert M.acquisition_window(image, 1) is None
+
+
+def windows(per_t):
+    return [(index, (w.start, w.end)) for index, w in per_t]
+
+
+def test_each_timepoint_spans_its_own_frames():
+    image = StampedImage({"T": 3, "C": 2, "Y": 8, "X": 8}, [stamp(s) for s in (0, 1, 10, 12, 20, 21)])
+    whole, per_t = M.frame_windows(image, None)
+    assert (whole.start, whole.end) == (utc(0), utc(21))
+    assert windows(per_t) == [(0, (utc(0), utc(1))), (1, (utc(10), utc(12))), (2, (utc(20), utc(21)))]
+
+
+def test_a_tiles_timepoints_are_its_own():
+    image = StampedImage({"M": 2, "T": 2, "Y": 8, "X": 8}, [stamp(s) for s in (0, 1, 10, 11)])
+    whole, per_t = M.frame_windows(image, 1)
+    assert (whole.start, whole.end) == (utc(10), utc(11))
+    assert windows(per_t) == [(0, (utc(10), utc(10))), (1, (utc(11), utc(11)))]
+
+
+def test_no_time_axis_states_no_timepoints():
+    assert M.frame_windows(StampedImage({"C": 2, "Y": 8, "X": 8}, [stamp(0), stamp(1)]), None)[1] == []
+    assert M.frame_windows(StampedImage({"T": 1, "C": 2, "Y": 8, "X": 8}, [stamp(0), stamp(1)]), None)[1] == []
+
+
+def test_frames_that_cannot_be_told_apart_state_no_timepoints():
+    whole, per_t = M.frame_windows(StampedImage({"T": 3, "C": 2, "Y": 8, "X": 8}, [stamp(0), stamp(5)]), None)
+    assert (whole.start, whole.end) == (utc(0), utc(5)), "the whole is still every stamp there is"
+    assert per_t == []
+    assert M.frame_windows(StampedImage({"M": 3, "T": 2, "Y": 8, "X": 8}, [stamp(0)]), 1) == (None, [])
+
+
 def test_stage_centre_reads_tile_scan_info_in_micrometers():
     image = FakeLifImage(FakeTileScan([(0.08, 0.04), (0.081, 0.04)]))
     centre = M.stage_centre(image, 1, None)
@@ -373,6 +445,7 @@ def test_colours_follow_the_lut_then_the_band_then_the_palette():
 
 class FakeId:
     id = "fake"
+    name = "fake"
 
 
 class FakeLens:
@@ -542,3 +615,112 @@ def test_a_persisted_level_one_changes_no_value(tmp_path):
         np.testing.assert_array_equal(np.asarray(a), np.asarray(b))
     # Level 1 is read back from the scratch directory, not re-derived from the base.
     assert any(tmp_path.iterdir())
+
+
+# --- the scene snapshot ---------------------------------------------------------------
+
+
+def test_a_preview_is_the_maximum_projection_in_each_channels_window():
+    data = np.zeros((2, 3, 4, 4), dtype=np.uint16)
+    data[0, 1, 0, 0] = 20  # channel 0, bright at one plane only
+    data[1, 2, 3, 3] = 15  # channel 1, halfway into its window
+    level = xr.DataArray(data, dims=("c", "z", "y", "x"))
+    specs = [
+        M.ChannelSpec(0, "a", (255, 0, 0, 255), None, (0.0, 20.0), None),
+        M.ChannelSpec(1, "b", (0, 255, 0, 255), None, (10.0, 20.0), None),
+    ]
+
+    rgb = M.render_preview(level, specs, implicit_rgb=False, side=4)
+
+    assert rgb.shape == (4, 4, 3) and rgb.dtype == np.uint8
+    assert tuple(rgb[0, 0]) == (255, 0, 0)
+    assert tuple(rgb[3, 3]) == (0, 127, 0)
+    assert rgb[1:3, 1:3].max() == 0
+
+
+def test_a_preview_fits_its_side():
+    level = xr.DataArray(np.zeros((1, 100, 50), dtype=np.uint8), dims=("c", "y", "x"))
+    specs = [M.ChannelSpec(0, "a", (255, 255, 255, 255), None, (0.0, 1.0), None)]
+    assert M.render_preview(level, specs, False, side=32).shape == (25, 13, 3)
+
+
+def test_an_rgba_previews_alpha_is_not_drawn():
+    level = xr.DataArray(np.full((4, 2, 2), 255, dtype=np.uint8), dims=("c", "y", "x"))
+    specs = [
+        M.ChannelSpec(i, "", M.channel_color(None, i, True, 4), None, (0.0, 255.0), None)
+        for i in range(4)
+    ]
+    assert tuple(M.render_preview(level, specs, True, side=2)[0, 0]) == (255, 255, 255)
+
+
+def test_tiles_are_laid_out_at_their_stage_positions():
+    red = np.zeros((2, 2, 3), dtype=np.uint8)
+    red[..., 0] = 200
+    green = np.zeros((2, 2, 3), dtype=np.uint8)
+    green[..., 1] = 100
+    canvas = M.mosaic(
+        [
+            M.Preview(red, (0.0, 0.0), (1.0, 1.0)),
+            M.Preview(green, (0.0, 2.0), (1.0, 1.0)),
+        ]
+    )
+    assert canvas.shape == (2, 4, 3)
+    assert tuple(canvas[0, 0]) == (200, 0, 0)
+    assert tuple(canvas[1, 3]) == (0, 100, 0)
+
+
+def test_the_snapshot_is_a_png():
+    import zlib
+
+    rgb = np.arange(2 * 3 * 3, dtype=np.uint8).reshape(2, 3, 3)
+    png = M.encode_png(rgb)
+    assert png.startswith(b"\x89PNG\r\n\x1a\n")
+    start = png.index(b"IDAT") + 4
+    length = int.from_bytes(png[start - 8 : start - 4], "big")
+    rows = np.frombuffer(zlib.decompress(png[start : start + length]), np.uint8)
+    rows = rows.reshape(2, 1 + 3 * 3)
+    assert (rows[:, 0] == 0).all()
+    assert (rows[:, 1:].reshape(2, 3, 3) == rgb).all()
+
+
+def test_a_scene_gets_its_snapshot(tmp_path):
+    calls = []
+    scene = M.Scene.model_construct(id="s1", name="scene")
+    entry = M.Converted(
+        0, "x", None, [], True, False, False,
+        M.Preview(np.zeros((2, 2, 3), np.uint8), None, None),
+    )
+    M.snapshot_scene(_RecordingMikro(calls), scene, [entry], str(tmp_path))
+    [(name, kw)] = calls
+    assert name == "create_scene_snapshot"
+    assert kw["scene"] == "s1"
+    assert kw["file"].name.endswith(".png")
+
+
+def test_a_mosaic_never_exceeds_the_snapshot_side():
+    tile = np.full((4, 4, 3), 255, dtype=np.uint8)
+    far = 10 * M.SNAPSHOT_PIXELS
+    canvas = M.mosaic(
+        [M.Preview(tile, (0.0, 0.0), (1.0, 1.0)), M.Preview(tile, (0.0, far), (1.0, 1.0))]
+    )
+    assert max(canvas.shape[:2]) <= M.SNAPSHOT_PIXELS
+    assert canvas[0, 0].any() and canvas[0, -1].any()
+
+
+def test_a_composed_scene_is_each_datasets_default():
+    calls = []
+
+    class Mikro(_RecordingMikro):
+        def create_scene(self, **kw):
+            calls.append(("create_scene", kw))
+            return M.Scene.model_construct(
+                id="s1", name=kw["name"], world_coordinate_system=FakeId()
+            )
+
+    entries = [
+        M.Converted(tile, f"t{tile}", FakeDataset(), fake_specs(1), True, False, False, None)
+        for tile in range(2)
+    ]
+    M.compose_scene(Mikro(calls), "mosaic", FakeId(), entries)
+    nominations = [kw for name, kw in calls if name == "set_lens_default_scene"]
+    assert nominations == [{"lens": "lens", "scene": "s1"}] * 2

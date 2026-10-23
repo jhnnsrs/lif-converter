@@ -9,11 +9,11 @@ channel, its laser lines, the pinhole in Airy units, the display window LAS X sh
 in, and where the stage put every tile. See `leica_metadata`.
 
 Everything the file says about an image is pinned to a *coordinate*: facts true of the
-whole image (the Leica XML record, the stand, the objective, the scanner, the stage) hang
-off the origin anchor; facts true of one channel (its histogram, dye, detector, laser
-lines, light path) hang off that channel's anchor. Physical scale is an edge, not a
-property — every calibrated image registers into one micrometer world, at its stage
-position, and each gets a scene of its own over it.
+whole image (the Leica XML record, the stand, the objective, the scanner, the stage, when
+it was acquired) hang off the anchor that pins no axis; facts true of one channel (its
+histogram, dye, detector, laser lines, light path) hang off that channel's anchor.
+Physical scale is an edge, not a property — every calibrated image registers into one
+micrometer world, at its stage position, and each gets a scene of its own over it.
 
 A tile scan is one LIF image with an ``M`` axis. Each tile is uploaded as a dataset of
 its own and registered at its own stage position. If the file also holds the merged image
@@ -31,12 +31,16 @@ micrometer. Such a dataset is staged in its own pixel grid instead.
 
 from __future__ import annotations
 
+import datetime
 import logging
+import math
 import os
 import posixpath
 import re
 import shutil
+import struct
 import tempfile
+import zlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -47,6 +51,7 @@ import xarray as xr
 from arkitekt import App, Task, run
 from mikro import Mikro, build_pyramid, canonical, mikro_service, scales_from, space_3d
 from mikro.api.schema import (
+    AcquisitionWindowInput,
     ArrayDataset,
     AxisAnchorInput,
     AxisType,
@@ -165,6 +170,10 @@ MERGE_EXTENT_RATIO = (0.9, 1.1)
 # on its longer side: enough to open a 12k stitched image in one fetch, and no more
 # levels than a 512-pixel field needs.
 PYRAMID_TOP_PIXELS = 512
+
+# The longer side of a scene snapshot, in pixels. A mosaic's tiles share it: each is
+# rendered at its share of the side, so 48 tiles cost what one field does.
+SNAPSHOT_PIXELS = 1024
 
 # What this converter reads. XLEF/XLIF/XLCF are folders of XML pointing at sidecar files,
 # and only the one file the action was given is ever downloaded.
@@ -552,6 +561,60 @@ def merged_partners(footprints: Sequence[Footprint | None]) -> dict[int, int]:
 # ---------------------------------------------------------------------------
 # Anchors
 # ---------------------------------------------------------------------------
+
+
+def frame_windows(
+    image: Any, tile: int | None
+) -> tuple[AcquisitionWindowInput | None, list[tuple[int, AcquisitionWindowInput]]]:
+    """When this image, or this tile of it, was acquired: as a whole, and per timepoint.
+
+    LAS X stamps every frame (every plane but Y/X/S) with a FILETIME, so UTC, in the
+    image's dimension order. The whole runs from the first frame to the last. A timepoint
+    spans its own frames — every plane and channel taken at it — and is only told apart
+    when there is exactly one stamp per frame; so is a tile, along M, which otherwise
+    states nothing rather than claim the whole scan's time. Timepoints are only stated
+    for a T longer than one, keyed by their index along it.
+    """
+    stamps = image.timestamps
+    if stamps is None or not len(stamps):
+        return None, []
+    stamps = np.asarray(stamps)
+    frame_dims = [str(d) for d in image.dims if str(d) not in ("Y", "X", "S")]
+    sizes = [int(image.sizes[d]) for d in frame_dims]
+    grid = stamps.reshape(sizes) if len(stamps) == math.prod(sizes) else None
+    if tile is not None:
+        if grid is None or "M" not in frame_dims:
+            return None, []
+        grid = np.moveaxis(grid, frame_dims.index("M"), 0)[tile]
+        frame_dims = [d for d in frame_dims if d != "M"]
+
+    whole = span(grid if grid is not None else stamps)
+    per_t: list[tuple[int, AcquisitionWindowInput]] = []
+    if grid is not None and "T" in frame_dims and grid.shape[frame_dims.index("T")] > 1:
+        for index, frames in enumerate(np.moveaxis(grid, frame_dims.index("T"), 0)):
+            window = span(frames)
+            if window is not None:
+                per_t.append((index, window))
+    return whole, per_t
+
+
+def acquisition_window(image: Any, tile: int | None) -> AcquisitionWindowInput | None:
+    """When this image, or this tile of it, was acquired: its first and last frame."""
+    return frame_windows(image, tile)[0]
+
+
+def span(stamps: np.ndarray) -> AcquisitionWindowInput | None:
+    """The first and last of these stamps, ignoring the missing ones; None when none is left."""
+    stamps = np.asarray(stamps).ravel()
+    stamps = stamps[~np.isnat(stamps)]
+    if not stamps.size:
+        return None
+    return AcquisitionWindowInput(start=utc(stamps.min()), end=utc(stamps.max()))
+
+
+def utc(stamp: np.datetime64) -> datetime.datetime:
+    """A LIF time stamp as an aware datetime: FILETIMEs are UTC."""
+    return stamp.astype("datetime64[us]").item().replace(tzinfo=datetime.UTC)
 
 
 def series_optikit(
@@ -987,6 +1050,138 @@ def author_channel_layers(
     return len(specs)
 
 
+# ---------------------------------------------------------------------------
+# Snapshots
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Preview:
+    """One series drawn the way its layers draw it, small: a maximum projection.
+
+    Rendered in `convert_tile`, while the pyramid it is read from still exists, and only
+    blended into a scene snapshot once the scene's other series have landed.
+    `origin_um` and `pixel_um` are ``(y, x)`` in the world, or None for a series that is
+    not registered into it — such a series is the whole of its own scene.
+    """
+
+    rgb: np.ndarray
+    origin_um: tuple[float, float] | None
+    pixel_um: tuple[float, float] | None
+
+
+def preview_level(pyramid: Sequence[xr.DataArray], side: int) -> int:
+    """The finest pyramid level whose longer side fits `side`, else the coarsest."""
+    for index, level in enumerate(pyramid):
+        if max(level.sizes.get("y", 1), level.sizes.get("x", 1)) <= side:
+            return index
+    return len(pyramid) - 1
+
+
+def render_preview(
+    level: xr.DataArray, specs: Sequence[ChannelSpec], implicit_rgb: bool, side: int
+) -> np.ndarray:
+    """What the layers over `level` show, as 8-bit RGB: each channel's maximum through z,
+    in its own colour and contrast window, summed — the scene blends ADDITIVE.
+
+    The first time point and the first index of any other axis: a snapshot is one
+    picture. An RGBA series' alpha is a mask, and is not drawn, as its layer does not.
+    """
+    level = level.isel({d: 0 for d in level.dims if d not in ("c", "z", "y", "x")})
+    if "z" in level.dims:
+        level = level.max("z")
+    step = -(-max(level.sizes["y"], level.sizes["x"]) // side)
+    level = level.isel(y=slice(None, None, step), x=slice(None, None, step))
+
+    rgb = np.zeros((level.sizes["y"], level.sizes["x"], 3), dtype=np.float32)
+    for spec in specs:
+        if implicit_rgb and spec.index >= 3:
+            continue
+        low, high = spec.clim
+        values = np.asarray(level.isel(c=spec.index), dtype=np.float32)
+        shown = np.clip((values - low) / (high - low), 0.0, 1.0)
+        rgb += shown[..., None] * np.asarray(spec.color[:3], dtype=np.float32)
+    return np.clip(rgb, 0, 255).astype(np.uint8)
+
+
+def mosaic(previews: Sequence[Preview]) -> np.ndarray:
+    """The previews of one scene, each at its place in the world.
+
+    One preview is its own picture. Several are laid out at their stage positions on one
+    canvas at the finest pixel size among them (coarser where that would exceed
+    `SNAPSHOT_PIXELS`), each resampled to it nearest-neighbour;
+    where tiles overlap the brighter wins, rather than the overlap summing to a seam.
+    """
+    if len(previews) == 1 or any(p.origin_um is None for p in previews):
+        return previews[0].rgb
+
+    pixel = min(min(p.pixel_um) for p in previews)
+    top = min(p.origin_um[0] for p in previews)
+    left = min(p.origin_um[1] for p in previews)
+    bottom = max(p.origin_um[0] + p.rgb.shape[0] * p.pixel_um[0] for p in previews)
+    right = max(p.origin_um[1] + p.rgb.shape[1] * p.pixel_um[1] for p in previews)
+    # Coarser where the tiles span more than the snapshot's side: a strip of tiles, or
+    # two fields far apart, would otherwise grow the canvas with the distance between.
+    pixel = max(pixel, max(bottom - top, right - left) / SNAPSHOT_PIXELS)
+
+    shape = (max(1, round((bottom - top) / pixel)), max(1, round((right - left) / pixel)))
+    canvas = np.zeros((*shape, 3), dtype=np.uint8)
+    for preview in previews:
+        rows = max(1, round(preview.rgb.shape[0] * preview.pixel_um[0] / pixel))
+        cols = max(1, round(preview.rgb.shape[1] * preview.pixel_um[1] / pixel))
+        y0 = min(round((preview.origin_um[0] - top) / pixel), shape[0] - 1)
+        x0 = min(round((preview.origin_um[1] - left) / pixel), shape[1] - 1)
+        rows, cols = min(rows, shape[0] - y0), min(cols, shape[1] - x0)
+        picked = preview.rgb[
+            (np.arange(rows) * preview.rgb.shape[0] // rows)[:, None],
+            np.arange(cols) * preview.rgb.shape[1] // cols,
+        ]
+        target = canvas[y0 : y0 + rows, x0 : x0 + cols]
+        np.maximum(target, picked, out=target)
+    return canvas
+
+
+def encode_png(rgb: np.ndarray) -> bytes:
+    """`rgb` (8-bit, height × width × 3) as a PNG, with nothing but the standard library."""
+
+    def chunk(tag: bytes, body: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(body))
+            + tag
+            + body
+            + struct.pack(">I", zlib.crc32(tag + body))
+        )
+
+    height, width, _ = rgb.shape
+    # Every scanline is prefixed with its filter type; 0 is none.
+    rows = np.concatenate(
+        [np.zeros((height, 1), dtype=np.uint8), rgb.reshape(height, width * 3)], axis=1
+    )
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(np.ascontiguousarray(rows).tobytes(), 6))
+        + chunk(b"IEND", b"")
+    )
+
+
+def snapshot_scene(
+    mikro: Mikro, scene: Scene, entries: Sequence[Converted], scratch: str
+) -> None:
+    """Attach a maximum projection of `scene` as its snapshot: a preview a client can
+    show without compositing the layers itself."""
+    previews = [entry.preview for entry in entries if entry.preview is not None]
+    if not previews:
+        return
+    path = os.path.join(scratch, f"snapshot-{scene.id}.png")
+    with open(path, "wb") as out:
+        out.write(encode_png(mosaic(previews)))
+    with open(path, "rb") as picture:
+        mikro.create_scene_snapshot(
+            file=picture, scene=scene.id, name=f"{scene.name} (maximum projection)"
+        )
+
+
 def compose_scene(
     mikro: Mikro, name: str, coordinate_system: Any, entries: Sequence[Converted]
 ) -> Scene:
@@ -1036,6 +1231,12 @@ def compose_scene(
             order,
         )
 
+    # Nominated through the whole lens: on an unsliced lens that is the dataset's own
+    # default scene, and so where its thumbnail (`latestSnapshot`) comes from. A
+    # mosaic's tiles all nominate the mosaic.
+    for entry in entries:
+        mikro.set_lens_default_scene(lens=entry.dataset.lens().id, scene=scene.id)
+
     logger.info(
         "Scene %s over %s: %s layer(s) from %s dataset(s)",
         scene.id,
@@ -1047,14 +1248,30 @@ def compose_scene(
 
 
 def stage_group(
-    mikro: Mikro, title: str, world: Any, entries: Sequence[Converted]
+    mikro: Mikro,
+    title: str,
+    world: Any,
+    entries: Sequence[Converted],
+    scratch: str | None = None,
 ) -> None:
     """Compose the scene(s) for one group out of `scene_groups`.
 
     The registered series in it share one scene over the world. An uncalibrated series is
     not in the world, so it is staged in its own pixel grid instead — the honest frame for
     it, and one it shares with nothing.
+
+    With a `scratch` directory, every scene also gets its snapshot (`snapshot_scene`).
     """
+
+    def compose(name: str, system: Any, members: Sequence[Converted]) -> None:
+        scene = compose_scene(mikro, name, system, members)
+        if scratch is None:
+            return
+        try:
+            snapshot_scene(mikro, scene, members, scratch)
+        except Exception:  # the scene is composed; a picture of it is not worth it
+            logger.exception("Could not snapshot %s", name)
+
     registered = [entry for entry in entries if entry.registered]
     if registered:
         layer_count = sum(entry.layer_count for entry in registered)
@@ -1069,7 +1286,7 @@ def stage_group(
                 MAX_SCENE_LAYERS,
             )
         else:
-            compose_scene(mikro, title, world, registered)
+            compose(title, world, registered)
 
     for entry in entries:
         if entry.registered:
@@ -1081,7 +1298,7 @@ def stage_group(
                 entry.series,
             )
             continue
-        compose_scene(mikro, entry.name, entry.dataset.intrinsic_system, [entry])
+        compose(entry.name, entry.dataset.intrinsic_system, [entry])
 
 
 # ---------------------------------------------------------------------------
@@ -1100,6 +1317,7 @@ class Converted:
     registered: bool
     is_volume: bool
     implicit_rgb: bool
+    preview: Preview | None = None
 
     @property
     def layer_count(self) -> int:
@@ -1144,9 +1362,15 @@ def convert_tile(
     levels: int,
     method: str,
     scratch: str,
+    preview_side: int | None = None,
+    stamped_by: Any | None = None,
 ) -> Converted:
     """Upload one tile of an image (or the whole image), and place it if the file says
     where. Never stages it: that depends on the images around it — see `merged_partners`.
+
+    With a `preview_side`, also renders its `Preview` at most that many pixels on a side.
+    `stamped_by` is the image whose frames say when this one was acquired: the scan, for
+    its merged image, which LAS X stamps with the first tile's frames alone.
     """
     array, extra_types, packed_samples = tile_array(whole, tile)
     scan = acquisition.scan
@@ -1174,6 +1398,14 @@ def convert_tile(
 
     scale, scale_note = voxel_scale(leica_dims, dims)
     centre = stage_centre(image, tile, scan)
+    # A merged image is stamped with its first tile's frames: its scan's whole window is
+    # the true one, and its timepoints are not the scan's.
+    if stamped_by is not None:
+        whole_window, timepoint_windows = acquisition_window(stamped_by, None), []
+    else:
+        whole_window, timepoint_windows = frame_windows(image, tile)
+    if "t" not in dims:
+        timepoint_windows = []
     specs = channel_specs(data, pyramid, leica, packed_samples, is_volume)
 
     label = text(image.name) or image.path
@@ -1189,11 +1421,11 @@ def convert_tile(
             data, types=dict.fromkeys(extra_types, "INDEX"), long_names=AXIS_LONG_NAMES
         ),
         anchors=[
+            # No axis pinned: what the file says of the whole image holds along all of it.
             CoordinateAnchorInput(
-                axis_anchors=tuple(
-                    AxisAnchorInput(axis=str(d), value=0) for d in data.dims
-                ),
+                axis_anchors=(),
                 label=LabelInput(label=label),
+                acquisition_window=whole_window,
                 ome_metadata=OmeMetadataInput(
                     metadata_string=image_record(
                         file.name,
@@ -1209,6 +1441,14 @@ def convert_tile(
                 ),
             ),
             *channel_anchors(specs, acquisition, text(image.name) or "Sample", leica_dims),
+            # When each timepoint was taken: intervals a nominal increment cannot state.
+            *(
+                CoordinateAnchorInput(
+                    axis_anchors=(AxisAnchorInput(axis="t", value=index),),
+                    acquisition_window=window,
+                )
+                for index, window in timepoint_windows
+            ),
         ],
         # The link back to the bytes these arrays were read out of. The identifier is
         # Leica's own UniqueID of the image, plus the tile — what survives a reader that
@@ -1225,12 +1465,35 @@ def convert_tile(
         ],
     )
 
+    offsets = stage_offsets(centre, scale, data, leica_dims) if scale is not None else {}
+
+    preview = None
+    if preview_side is not None:
+        try:
+            level = pyramid[preview_level(pyramid, preview_side)]
+            rgb = render_preview(level, specs, implicit_rgb, preview_side)
+            placed = scale is not None and "x" in offsets and "y" in offsets
+            preview = Preview(
+                rgb,
+                (offsets["y"], offsets["x"]) if placed else None,
+                (
+                    scale["y"] * data.sizes["y"] / rgb.shape[0],
+                    scale["x"] * data.sizes["x"] / rgb.shape[1],
+                )
+                if placed
+                else None,
+            )
+        except Exception:  # only costs the snapshot
+            logger.exception("Could not render a preview of %s", name)
+
     if scale is None:
         logger.info("%s: %s", name, scale_note)
-        return Converted(tile or 0, name, dataset, specs, False, is_volume, implicit_rgb)
+        return Converted(
+            tile or 0, name, dataset, specs, False, is_volume, implicit_rgb, preview
+        )
 
-    world.register(dataset, scale=scale, **stage_offsets(centre, scale, data, leica_dims))
-    return Converted(tile or 0, name, dataset, specs, True, is_volume, implicit_rgb)
+    world.register(dataset, scale=scale, **offsets)
+    return Converted(tile or 0, name, dataset, specs, True, is_volume, implicit_rgb, preview)
 
 
 # ---------------------------------------------------------------------------
@@ -1245,7 +1508,8 @@ def convert_tile(
         "pyramided dataset — every tile, for a tile scan — with Leica's own metadata: "
         "sequential settings, detectors, laser lines, pinhole and display windows, "
         "placed in a shared micrometer space at its stage position and staged in a scene "
-        "of its own. Tiles whose merged image is in the file are uploaded but not staged."
+        "of its own, with a maximum projection of it as the scene's snapshot. Tiles "
+        "whose merged image is in the file are uploaded but not staged."
     ),
     collections=["conversion"],
     logo=logo_of("convert_lif_file_to_datasets"),
@@ -1258,6 +1522,7 @@ def convert_lif_file_to_datasets(
     method: str = "max",
     stage_scene: bool = True,
     world_name: str = "",
+    snapshot: bool = True,
 ) -> list[ArrayDataset]:
     """Convert every image of a LIF file into a dataset, one per tile of a tile scan.
 
@@ -1328,6 +1593,7 @@ def convert_lif_file_to_datasets(
             # Decided up front, from the header alone: a merged image anywhere in the
             # file decides whether its tiles are staged, and the tiles may come first.
             merged = merged_partners(footprints)
+            scan_of = {merged_index: scan_index for scan_index, merged_index in merged.items()}
             for scan_index, merged_index in merged.items():
                 logger.info(
                     "%s is the merge of the %s tiles of %s; the tiles are uploaded and "
@@ -1355,6 +1621,14 @@ def convert_lif_file_to_datasets(
                     done += len(tile_indices)
                     continue
 
+                # Only for a scene that will be composed: a merged image's tiles are not
+                # staged, and a mosaic shares one snapshot side between its tiles.
+                preview_side = None
+                if snapshot and stage_scene and index not in merged:
+                    preview_side = max(
+                        64, int(SNAPSHOT_PIXELS / np.sqrt(len(tile_indices)))
+                    )
+
                 entries: list[Converted] = []
                 for tile in tile_indices:
                     task.progress(
@@ -1381,6 +1655,8 @@ def convert_lif_file_to_datasets(
                                 levels,
                                 method,
                                 scratch,
+                                preview_side,
+                                images[scan_of[index]] if index in scan_of else None,
                             )
                         )
                     except Exception as exc:  # one bad tile must not cost the other 97
@@ -1399,7 +1675,9 @@ def convert_lif_file_to_datasets(
                     else f"{file.name} - {image.path} ({len(entries)} tiles)"
                 )
                 try:
-                    stage_group(mikro, title, world, entries)
+                    stage_group(
+                        mikro, title, world, entries, workdir if snapshot else None
+                    )
                 except Exception:  # the datasets are uploaded; a scene is not worth them
                     logger.exception("Could not stage %s", title)
 
