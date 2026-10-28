@@ -1,8 +1,8 @@
 """The app's logo, and one logo per action
 
-The app's logo is a LOGO blok: an SVG in colours of its own, which a client shows
-beside the app's name. Each action's logo is an ACTION_LOGO blok: the same SVG
-shapes, but painted only with the viewer's palette (``ink``, ``muted``, ``brand``,
+The app's logo is a LOGO blok (an ``<AgentLogo>`` root): an SVG in colours of its own,
+which a client shows beside the app's name. Each action's logo is an ACTION_LOGO blok
+(an ``<ActionLogo>`` root): the same SVG shapes, but painted only with the viewer's palette (``ink``, ``muted``, ``brand``,
 ``brand-strong``, ``brand-soft``, ``surface``), so the actions of every app look like
 one set and follow the viewer's brand and dark mode. A shape that ``animate``s plays
 while the logo is hovered, and while the viewer's run of the action is going.
@@ -20,29 +20,29 @@ APP_LOGO = f"{APP}_logo"
 # A Leica file, its corner folded, opening into a stack of planes in three
 # fluorescence channels: one LIF in, pyramided datasets out.
 APP_LOGO_SOURCE = """
-<SVG viewBox="0 0 64 64" title="lif-converter">
+<AgentLogo viewBox="0 0 64 64" title="lif-converter">
   <Defs>
     <LinearGradient id="ground" x1="0" y1="0" x2="1" y2="1">
-      <Stop offset="0" stopColor="#111827" />
-      <Stop offset="1" stopColor="#1e293b" />
+      <Stop offset="0" stopColor="ink" />
+      <Stop offset="1" stopColor="ink" />
     </LinearGradient>
   </Defs>
   <Rect x="0" y="0" width="64" height="64" rx="14" fill="url(#ground)" />
-  <Path d="M9 11a3 3 0 0 1 3-3h12l7 7v17a3 3 0 0 1-3 3H12a3 3 0 0 1-3-3Z" fill="#e2e8f0" />
-  <Path d="M24 8v5a2 2 0 0 0 2 2h5" fill="#94a3b8" />
-  <G fill="#64748b">
+  <Path d="M9 11a3 3 0 0 1 3-3h12l7 7v17a3 3 0 0 1-3 3H12a3 3 0 0 1-3-3Z" fill="surface" />
+  <Path d="M24 8v5a2 2 0 0 0 2 2h5" fill="muted" />
+  <G fill="muted">
     <Rect x="13" y="19" width="12" height="2.5" rx="1.25" />
     <Rect x="13" y="24" width="8" height="2.5" rx="1.25" />
   </G>
-  <Path d="M35 12.5h9a5 5 0 0 1 5 5V21" fill="none" stroke="#94a3b8" strokeWidth="2.4" strokeLinecap="round" />
-  <Path d="M45.5 18.5 49 22l3.5-3.5" fill="none" stroke="#94a3b8" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-  <G stroke="#0b1220" strokeWidth="1.6" strokeLinejoin="round">
-    <Polygon points="40,38 57,46 40,54 23,46" fill="#38bdf8" />
-    <Polygon points="40,32 57,40 40,48 23,40" fill="#f472b6" />
-    <Polygon points="40,26 57,34 40,42 23,34" fill="#34d399" />
+  <Path d="M35 12.5h9a5 5 0 0 1 5 5V21" fill="none" stroke="muted" strokeWidth="2.4" strokeLinecap="round" />
+  <Path d="M45.5 18.5 49 22l3.5-3.5" fill="none" stroke="muted" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+  <G stroke="ink" strokeWidth="1.6" strokeLinejoin="round">
+    <Polygon points="40,38 57,46 40,54 23,46" fill="spectrum-cyan" />
+    <Polygon points="40,32 57,40 40,48 23,40" fill="spectrum-red" />
+    <Polygon points="40,26 57,34 40,42 23,34" fill="spectrum-green" />
   </G>
-  <Rect x="0.5" y="0.5" width="63" height="63" rx="13.5" fill="none" stroke="#94a3b8" strokeOpacity="0.3" strokeWidth="1" />
-</SVG>
+  <Rect x="0.5" y="0.5" width="63" height="63" rx="13.5" fill="none" stroke="muted" strokeOpacity="0.3" strokeWidth="1" />
+</AgentLogo>
 """
 
 ACTION_LOGOS: dict[str, str] = {
@@ -76,8 +76,7 @@ def declare_logos(app: App) -> None:
         APP_LOGO,
         APP_LOGO_SOURCE,
         description="A Leica LIF file opening into a stack of planes in three channels.",
-        context="logo",
         default=True,
     )
     for action, source in ACTION_LOGOS.items():
-        app.blok(logo_of(action), source, context="action_logo")
+        app.blok(logo_of(action), source)

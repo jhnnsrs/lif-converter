@@ -5,7 +5,7 @@ description = "Converts Leica LIF files into mikro datasets natively, with Leica
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "arkitekt[all]>=8.0.0",
+    "arkitekt[all]>=9.0",
     "dask[array]>=2026.8.0",
     "kanne>=2.6.0",
     "liffile>=2026.10.14",
