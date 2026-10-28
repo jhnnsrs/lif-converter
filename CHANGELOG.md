@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.1.2 (2026-10-28)
+
+### Bug Fixes
+
+- The recorded manifest carries the scopes a run asks for (arkitekt 10.0.2)
+  ([`00a8825`](https://github.com/jhnnsrs/lif-converter/commit/00a8825529c4b1386baa7deed927ff485e053d4d))
+
+
 ## v1.1.1 (2026-10-28)
 
 ### Bug Fixes
