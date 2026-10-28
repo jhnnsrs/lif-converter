@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.1.0 (2026-10-28)
+
+### Features
+
+- Ask for the scopes the clients need, on arkitekt 10
+  ([`84f4474`](https://github.com/jhnnsrs/lif-converter/commit/84f447486324755592ea2a305b27fb3858418bd0))
+
+
 ## v1.0.0 (2026-10-28)
 
 ### Features
