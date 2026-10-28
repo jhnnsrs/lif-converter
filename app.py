@@ -105,7 +105,6 @@ app = App(
         "detectors, laser lines, pinhole, display windows and stage positions."
     ),
     author="jhnnsrs",
-    scopes=["read", "write"],
 )
 app.service(mikro_service)
 declare_logos(app)
