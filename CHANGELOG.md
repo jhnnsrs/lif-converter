@@ -2,6 +2,18 @@
 
 <!-- version list -->
 
+## v1.0.0 (2026-10-28)
+
+### Features
+
+- On arkitekt 9 (blok v2, the organization-identifier servers)
+  ([`4a02962`](https://github.com/jhnnsrs/lif-converter/commit/4a0296252f8abe0094a48191da4e9ad61c176080))
+
+### Breaking Changes
+
+- Needs a hub with the servers of that wave (rekuest 11, mikro 12, ...).
+
+
 ## v0.1.0 (2026-10-23)
 
 ### Build System
