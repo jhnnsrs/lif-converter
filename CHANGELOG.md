@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.1.5 (2026-11-01)
+
+### Bug Fixes
+
+- Release an image built on arkitekt 13.0.0
+  ([`3e1078a`](https://github.com/jhnnsrs/lif-converter/commit/3e1078a300eed8b3630f16544307fbf4f4a80aca))
+
+### Build System
+
+- Lock arkitekt 13.0.0
+  ([`fd04629`](https://github.com/jhnnsrs/lif-converter/commit/fd04629124c79a4de3be309afafb676193cb71f8))
+
+
 ## v1.1.4 (2026-11-01)
 
 ### Bug Fixes
