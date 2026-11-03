@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.1.6 (2026-11-03)
+
+### Bug Fixes
+
+- Share the world only with images placed along every axis
+  ([`28a88f6`](https://github.com/jhnnsrs/lif-converter/commit/28a88f6b87b8ac1b982c59d6123911a79441f528))
+
+### Refactoring
+
+- Adopt Python 3.11 typing (X | None, builtin generics, collections.abc)
+  ([`177fe74`](https://github.com/jhnnsrs/lif-converter/commit/177fe746fe5133da2c0177b13862460f61a629d5))
+
+
 ## v1.1.5 (2026-11-01)
 
 ### Bug Fixes
