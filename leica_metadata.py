@@ -298,6 +298,22 @@ class LeicaScan:
         return None
 
 
+def recorded_stage_xy(top: ET.Element | None) -> tuple[float | None, float | None]:
+    """The scan-wide stage position in metres, or ``(None, None)`` when none was recorded.
+
+    LAS AF/X writes ``StagePosX="0" StagePosY="0" StagePosZ="0"`` on a system that does
+    not read its stage out: in ``CFP synpo D #2 alt.lif`` every image carries exactly that,
+    while its Z ``Origin`` is a real 24.3 mm and differs between images. A pair of exact
+    zeros is that placeholder, not a position. Read as one, every image would be placed on
+    top of every other, at a stage position the instrument never reported -- so it is
+    unknown, and nothing is placed or stated from it.
+    """
+    x, y = attr_float(top, "StagePosX"), attr_float(top, "StagePosY")
+    if x == 0.0 and y == 0.0:
+        return None, None
+    return x, y
+
+
 def leica_scan(image_el: ET.Element) -> LeicaScan | None:
     top = scan_definition(image_el)
     if top is None:
@@ -326,8 +342,8 @@ def leica_scan(image_el: ET.Element) -> LeicaScan | None:
         bit_size=attr_float(top, "BitSize"),
         rotator_angle=attr_float(top, "RotatorAngle"),
         z_mode=attr_text(top, "ZUseModeName"),
-        stage_x_m=attr_float(top, "StagePosX"),
-        stage_y_m=attr_float(top, "StagePosY"),
+        stage_x_m=recorded_stage_xy(top)[0],
+        stage_y_m=recorded_stage_xy(top)[1],
         flip_x=attr_flag(top, "FlipX"),
         flip_y=attr_flag(top, "FlipY"),
         swap_xy=attr_flag(top, "SwapXY"),

@@ -137,6 +137,21 @@ def test_stage_offsets_put_the_field_centre_at_the_stage_centre():
     assert offsets == pytest.approx({"x": 950.0, "y": 1975.0, "z": 1500.0})
 
 
+def test_only_a_fully_placed_image_shares_the_world():
+    stack = xr.DataArray(np.zeros((1, 3, 101, 201)), dims=("c", "z", "y", "x"))
+    plane = xr.DataArray(np.zeros((1, 101, 201)), dims=("c", "y", "x"))
+    scale = {"x": 0.5, "y": 0.5, "z": 1.0}
+    centre = M.StageCentre(1000.0, 2000.0, "TileScanInfo", False, False, False)
+    z = {"Z": dim("Z", 3, 2e-06, origin=1.5e-3)}
+
+    assert M.world_offsets(centre, scale, stack, z) is not None
+    assert M.world_offsets(centre, scale, plane, {}) == pytest.approx({"x": 950.0, "y": 1975.0})
+    # The legacy LAS AF case: the focus recorded, the stage not. Not at (0, 0, z).
+    assert M.world_offsets(None, scale, stack, z) is None
+    # A stack with no depth origin is not placed either.
+    assert M.world_offsets(centre, scale, stack, {}) is None
+
+
 class FakeTileScan:
     def __init__(self, rows, flip_x=False, flip_y=False, swap_xy=False):
         self.tiles = np.array(
@@ -707,6 +722,21 @@ def test_a_mosaic_never_exceeds_the_snapshot_side():
     assert canvas[0, 0].any() and canvas[0, -1].any()
 
 
+def test_an_unplaced_series_is_staged_alone_in_its_own_space(monkeypatch):
+    composed = []
+    monkeypatch.setattr(
+        M, "compose_scene", lambda mikro, name, system, members: composed.append((name, system, [m.name for m in members]))
+    )
+    world, own = object(), object()
+    entries = [
+        M.Converted(0, "a", FakeDataset(), fake_specs(1), True, False, False, None),
+        M.Converted(1, "b", FakeDataset(), fake_specs(1), True, False, False, None),
+        M.Converted(2, "c", FakeDataset(), fake_specs(1), False, False, False, None, own),
+    ]
+    M.stage_group(None, "file", world, entries)
+    assert composed == [("file", world, ["a", "b"]), ("c", own, ["c"])]
+
+
 def test_a_composed_scene_is_each_datasets_default():
     calls = []
 
@@ -724,3 +754,28 @@ def test_a_composed_scene_is_each_datasets_default():
     M.compose_scene(Mikro(calls), "mosaic", FakeId(), entries)
     nominations = [kw for name, kw in calls if name == "set_lens_default_scene"]
     assert nominations == [{"lens": "lens", "scene": "s1"}] * 2
+
+
+def test_the_image_anchor_carries_no_channel_label(monkeypatch):
+    """The image's name is the dataset's; as a label it read as a channel called "Series002"."""
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(M, "image_record", lambda *args: "{}")
+    monkeypatch.setattr(M, "series_optikit", lambda *args: None)
+    file = SimpleNamespace(name="x.lif", id="3")
+    image = SimpleNamespace(path="Series002", uuid=None, xml_element=None, name="Series002")
+    anchor = M.image_anchor(file, image, None, None, {}, None, None, None)
+    assert anchor.axis_anchors == ()
+    assert anchor.label is None
+
+
+def test_no_stage_centre_from_a_zero_stage():
+    """With no TileScanInfo and the zero placeholder read as unknown, nothing is placed."""
+    import xml.etree.ElementTree as ET
+    from types import SimpleNamespace
+
+    from leica_metadata import recorded_stage_xy
+
+    x, y = recorded_stage_xy(ET.fromstring('<S StagePosX="0" StagePosY="0" />'))
+    scan = SimpleNamespace(stage_x_m=x, stage_y_m=y)
+    assert M.stage_centre(FakeLifImage(None), None, scan) is None

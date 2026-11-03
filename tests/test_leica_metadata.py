@@ -327,3 +327,15 @@ def test_the_record_is_leica_xml_not_ome(dp):
     assert xml.find("./Data/Image/Attachment[@Name='HardwareSetting']") is not None
     # This image's element, not its descendants'.
     assert xml.find("./Children") is None
+
+
+def test_a_zero_stage_is_not_a_position():
+    """LAS X writes StagePosX/Y/Z="0" where it did not read the stage out (`recorded_stage_xy`)."""
+    import xml.etree.ElementTree as ET
+
+    unread = ET.fromstring('<ATLConfocalSettingDefinition StagePosX="0" StagePosY="0" StagePosZ="0" />')
+    assert L.recorded_stage_xy(unread) == (None, None)
+    # One axis at zero beside a real one is a position: only the pair of zeros is the placeholder.
+    edge = ET.fromstring('<ATLConfocalSettingDefinition StagePosX="0" StagePosY="0.0379" />')
+    assert L.recorded_stage_xy(edge) == (0.0, 0.0379)
+    assert L.recorded_stage_xy(None) == (None, None)

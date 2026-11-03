@@ -12,8 +12,12 @@ Everything the file says about an image is pinned to a *coordinate*: facts true 
 whole image (the Leica XML record, the stand, the objective, the scanner, the stage, when
 it was acquired) hang off the anchor that pins no axis; facts true of one channel (its
 histogram, dye, detector, laser lines, light path) hang off that channel's anchor.
-Physical scale is an edge, not a property — every calibrated image registers into one
-micrometer world, at its stage position, and each gets a scene of its own over it.
+Physical scale is an edge, not a property. An image shares the file's micrometer world
+only where the file says where it sits along EVERY spatial axis it has: x and y, and z
+for a stack (`world_offsets`). Sharing a space is the claim that positions in it compare,
+so a series whose x and y were never recorded is not put in the world at (0, 0) next to
+the others. It is registered, calibrated, into a micrometer space of its own instead,
+and staged there alone. Each gets a scene of its own.
 
 A tile scan is one LIF image with an ``M`` axis. Each tile is uploaded as a dataset of
 its own and registered at its own stage position. If the file also holds the merged image
@@ -51,6 +55,7 @@ import xarray as xr
 from arkitekt import App, Task, run
 from mikro import Mikro, build_pyramid, canonical, mikro_service, scales_from, space_3d
 from mikro.api.schema import (
+    PlacementValidity,
     AcquisitionWindowInput,
     ArrayDataset,
     AxisAnchorInput,
@@ -384,7 +389,9 @@ def stage_centre(image: Any, tile: int | None, scan: LeicaScan | None) -> StageC
 
     ``TileScanInfo`` first: it names one centre per tile, and a merged image carries one
     for itself — exactly the mean of its tiles', which is what lets `merged_partners`
-    find it. The scan-wide ``StagePosX/Y`` otherwise.
+    find it. The scan-wide ``StagePosX/Y`` otherwise — when LAS X recorded one: a pair of
+    zeros is its placeholder for "not read out" (`recorded_stage_xy`), and then there is
+    no centre at all. x and y stay unplaced rather than piling every image onto (0, 0).
 
     Leica's flips apply to the TileScanInfo positions, in which they are recorded. The
     scan-wide flags describe the scanner rather than the stage, so they are kept as
@@ -432,6 +439,26 @@ def stage_offsets(
     if "z" in data.dims and z is not None and z.unit == "m":
         offsets["z"] = min(z.origin, z.origin + z.length) * 1e6
     return offsets
+
+
+def world_offsets(
+    centre: StageCentre | None,
+    scale: Mapping[str, float],
+    data: xr.DataArray,
+    leica_dims: Mapping[str, LeicaDimension],
+) -> dict[str, float] | None:
+    """Where the image sits in the shared world, or None when the file does not say.
+
+    All or nothing: every spatial axis the image has must be placed — x and y from the
+    stage, z from the stack's origin. A space shared with other series is the claim that
+    positions in it compare. An axis left at 0 would put the image where the instrument
+    never said it was, on top of every other image the file did not place either. A
+    legacy LAS AF file that recorded only the focus is such a file: its z is known, its x
+    and y are not, so it is not placed at all.
+    """
+    offsets = stage_offsets(centre, scale, data, leica_dims)
+    spatial = {axis for axis in ("z", "y", "x") if axis in data.dims}
+    return offsets if spatial <= offsets.keys() else None
 
 
 # ---------------------------------------------------------------------------
@@ -633,13 +660,14 @@ def series_optikit(
     scan = acquisition.scan
     system = acquisition.system
     z = leica_dims.get("Z")
+    z_um = f"{z.origin * 1e6:g} um" if z is not None and z.unit == "m" else None
     stage = None
     if centre is not None:
-        stage = StageStateInput(
-            x=f"{centre.x:g} um",
-            y=f"{centre.y:g} um",
-            z=f"{z.origin * 1e6:g} um" if z is not None and z.unit == "m" else None,
-        )
+        stage = StageStateInput(x=f"{centre.x:g} um", y=f"{centre.y:g} um", z=z_um)
+    elif z_um is not None:
+        # The focus position is recorded even where the stage is not (`recorded_stage_xy`):
+        # state what is known, and leave x and y unstated rather than at 0.
+        stage = StageStateInput(z=z_um)
 
     info = image.tilescan
     field = info.tiles[tile] if info is not None and tile is not None and tile < len(info) else None
@@ -1255,9 +1283,10 @@ def stage_group(
 ) -> None:
     """Compose the scene(s) for one group out of `scene_groups`.
 
-    The registered series in it share one scene over the world. An uncalibrated series is
-    not in the world, so it is staged in its own pixel grid instead — the honest frame for
-    it, and one it shares with nothing.
+    The series placed in the world share one scene over it. Any other series is staged
+    alone: over its own micrometer space when it is calibrated but its position is not
+    fully known (`world_offsets`), over its own pixel grid when it is not calibrated
+    either. Both are the honest frame for it, and one it shares with nothing.
 
     With a `scratch` directory, every scene also gets its snapshot (`snapshot_scene`).
     """
@@ -1290,6 +1319,9 @@ def stage_group(
     for entry in entries:
         if entry.registered:
             continue
+        if entry.own_space is not None:
+            compose(entry.name, entry.own_space, [entry])
+            continue
         if entry.dataset.intrinsic_system is None:
             logger.warning(
                 "Series %s has no intrinsic coordinate system to compose over; the "
@@ -1313,10 +1345,14 @@ class Converted:
     name: str
     dataset: ArrayDataset
     specs: list[ChannelSpec]
+    #: Placed in the file's shared world (`world_offsets`).
     registered: bool
     is_volume: bool
     implicit_rgb: bool
     preview: Preview | None = None
+    #: The micrometer space of its own a calibrated series that is not placed in the
+    #: world is registered into; None for the placed and the uncalibrated.
+    own_space: Any | None = None
 
     @property
     def layer_count(self) -> int:
@@ -1348,6 +1384,42 @@ def packs_one_pixel(packed_samples: bool, channels: int, dtype: Any) -> bool:
     return packed_samples and channels in (3, 4) and np.dtype(dtype) == np.uint8
 
 
+def image_anchor(
+    file: File,
+    image: Any,
+    tile: int | None,
+    acquisition: Any,
+    leica_dims: Mapping[str, LeicaDimension],
+    centre: StageCentre | None,
+    scale_note: str | None,
+    whole_window: Any,
+) -> CoordinateAnchorInput:
+    """What the file says of the whole image (or tile), on the anchor that pins no axis.
+
+    No axis pinned, so it holds along all of the image: Leica's XML record, the stand and
+    scanner state, the stage, when it was acquired. **No label.** A channel label names a
+    channel and goes on that channel's anchor (`channel_anchors`); the image's name is the
+    dataset's name, and stated here it would read as a channel called "Series002".
+    """
+    return CoordinateAnchorInput(
+        axis_anchors=(),
+        acquisition_window=whole_window,
+        ome_metadata=OmeMetadataInput(
+            metadata_string=image_record(
+                file.name,
+                str(file.id),
+                image.path,
+                image.uuid,
+                tile,
+                image.xml_element,
+            )
+        ),
+        microscope=series_optikit(
+            file, image, tile, acquisition, leica_dims, centre, scale_note
+        ),
+    )
+
+
 def convert_tile(
     mikro: Mikro,
     file: File,
@@ -1366,6 +1438,11 @@ def convert_tile(
 ) -> Converted:
     """Upload one tile of an image (or the whole image), and place it if the file says
     where. Never stages it: that depends on the images around it — see `merged_partners`.
+
+    Placed means in the shared `world`, and only when the file says where along every
+    spatial axis (`world_offsets`). A calibrated image it does not place is registered
+    into a micrometer space of its own, at its origin: its scale holds, its position is
+    claimed against nothing.
 
     With a `preview_side`, also renders its `Preview` at most that many pixels on a side.
     `stamped_by` is the image whose frames say when this one was acquired: the scan, for
@@ -1407,9 +1484,6 @@ def convert_tile(
         timepoint_windows = []
     specs = channel_specs(data, pyramid, leica, packed_samples, is_volume)
 
-    label = text(image.name) or image.path
-    if tile is not None:
-        label = f"{label} (tile {tile})"
     name = f"{file.name} - {image.path}" + (f" (tile {tile})" if tile is not None else "")
 
     dataset = mikro.create_array_dataset(
@@ -1420,24 +1494,8 @@ def convert_tile(
             data, types=dict.fromkeys(extra_types, "INDEX"), long_names=AXIS_LONG_NAMES
         ),
         anchors=[
-            # No axis pinned: what the file says of the whole image holds along all of it.
-            CoordinateAnchorInput(
-                axis_anchors=(),
-                label=LabelInput(label=label),
-                acquisition_window=whole_window,
-                ome_metadata=OmeMetadataInput(
-                    metadata_string=image_record(
-                        file.name,
-                        str(file.id),
-                        image.path,
-                        image.uuid,
-                        tile,
-                        image.xml_element,
-                    )
-                ),
-                microscope=series_optikit(
-                    file, image, tile, acquisition, leica_dims, centre, scale_note
-                ),
+            image_anchor(
+                file, image, tile, acquisition, leica_dims, centre, scale_note, whole_window
             ),
             *channel_anchors(specs, acquisition, text(image.name) or "Sample", leica_dims),
             # When each timepoint was taken: intervals a nominal increment cannot state.
@@ -1464,14 +1522,14 @@ def convert_tile(
         ],
     )
 
-    offsets = stage_offsets(centre, scale, data, leica_dims) if scale is not None else {}
+    offsets = world_offsets(centre, scale, data, leica_dims) if scale is not None else None
 
     preview = None
     if preview_side is not None:
         try:
             level = pyramid[preview_level(pyramid, preview_side)]
             rgb = render_preview(level, specs, implicit_rgb, preview_side)
-            placed = scale is not None and "x" in offsets and "y" in offsets
+            placed = scale is not None and offsets is not None
             preview = Preview(
                 rgb,
                 (offsets["y"], offsets["x"]) if placed else None,
@@ -1491,7 +1549,19 @@ def convert_tile(
             tile or 0, name, dataset, specs, False, is_volume, implicit_rgb, preview
         )
 
-    world.register(dataset, scale=scale, **offsets)
+    if offsets is None:
+        logger.info(
+            "%s: the file does not say where it sits along every axis; registered into a "
+            "space of its own rather than the shared world",
+            name,
+        )
+        own = space_3d(mikro, f"{name} (micrometers)", unit="micrometer")
+        own.register(dataset, validity=PlacementValidity.INFERRED, scale=scale)
+        return Converted(
+            tile or 0, name, dataset, specs, False, is_volume, implicit_rgb, preview, own
+        )
+
+    world.register(dataset, validity=PlacementValidity.INFERRED, scale=scale, **offsets)
     return Converted(tile or 0, name, dataset, specs, True, is_volume, implicit_rgb, preview)
 
 
@@ -1506,8 +1576,9 @@ def convert_tile(
         "Read a Leica LIF file natively (no Bio-Formats) and upload every image as a "
         "pyramided dataset — every tile, for a tile scan — with Leica's own metadata: "
         "sequential settings, detectors, laser lines, pinhole and display windows, "
-        "placed in a shared micrometer space at its stage position and staged in a scene "
-        "of its own, with a maximum projection of it as the scene's snapshot. Tiles "
+        "placed in a shared micrometer space at its stage position where the file records "
+        "it along every axis (otherwise in a calibrated space of its own), and staged in "
+        "a scene of its own, with a maximum projection of it as the scene's snapshot. Tiles "
         "whose merged image is in the file are uploaded but not staged."
     ),
     collections=["conversion"],
