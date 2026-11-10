@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.2.0 (2026-11-10)
+
+### Features
+
+- The File port requires a .lif or .lof, on arkitekt 14.1.0 and mikro 13.1
+  ([`6bfee4c`](https://github.com/jhnnsrs/lif-converter/commit/6bfee4c9bed72214497fff5ddc457f9f0436512c))
+
+
 ## v1.1.6 (2026-11-03)
 
 ### Bug Fixes
