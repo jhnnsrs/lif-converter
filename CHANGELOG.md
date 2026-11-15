@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.2.3 (2026-11-15)
+
+### Bug Fixes
+
+- **deps**: Arkitekt 17 and arkitekt-spec 11
+  ([`0784143`](https://github.com/jhnnsrs/lif-converter/commit/0784143a01bfdd43e5d07e02d3f2f4aecaf1ea5a))
+
+
 ## v1.2.2 (2026-11-15)
 
 ### Bug Fixes
