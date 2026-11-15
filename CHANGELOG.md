@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.2.1 (2026-11-15)
+
+### Bug Fixes
+
+- **deps**: Arkitekt 16, on agent protocol 2
+  ([`c870697`](https://github.com/jhnnsrs/lif-converter/commit/c870697328fb2ea174b589f326bbaf4b760a5146))
+
+
 ## v1.2.0 (2026-11-10)
 
 ### Features
