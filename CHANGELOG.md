@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.2.2 (2026-11-15)
+
+### Bug Fixes
+
+- **deps**: Rekuest 15.0.1 and arkitekt-runtime 10.0.1
+  ([`22d8b99`](https://github.com/jhnnsrs/lif-converter/commit/22d8b99576e78e8fa5bff1750a5eaf89995fcda8))
+
+
 ## v1.2.1 (2026-11-15)
 
 ### Bug Fixes
