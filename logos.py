@@ -1,8 +1,8 @@
 """The app's logo, and one logo per action
 
-The app's logo is a LOGO blok (an ``<AgentLogo>`` root): an SVG in colours of its own,
-which a client shows beside the app's name. Each action's logo is an ACTION_LOGO blok
-(an ``<ActionLogo>`` root): the same SVG shapes, but painted only with the viewer's palette (``ink``, ``muted``, ``brand``,
+The app's logo is an agent logo blok (``<Blok kind="agent" context="logo">`` holding one
+``<Logo>``): an SVG in colours of its own, which a client shows beside the app's name. Each
+action's logo is an action logo blok (``<Blok kind="action" context="logo">``): the same SVG shapes, but painted only with the viewer's palette (``ink``, ``muted``, ``brand``,
 ``brand-strong``, ``brand-soft``, ``surface``), so the actions of every app look like
 one set and follow the viewer's brand and dark mode. A shape that ``animate``s plays
 while the logo is hovered, and while the viewer's run of the action is going.
@@ -20,7 +20,8 @@ APP_LOGO = f"{APP}_logo"
 # A Leica file, its corner folded, opening into a stack of planes in three
 # fluorescence channels: one LIF in, pyramided datasets out.
 APP_LOGO_SOURCE = """
-<AgentLogo viewBox="0 0 64 64" title="lif-converter">
+<Blok kind="agent" context="logo">
+<Logo viewBox="0 0 64 64" title="lif-converter">
   <Defs>
     <LinearGradient id="ground" x1="0" y1="0" x2="1" y2="1">
       <Stop offset="0" stopColor="ink" />
@@ -42,13 +43,15 @@ APP_LOGO_SOURCE = """
     <Polygon points="40,26 57,34 40,42 23,34" fill="spectrum-green" />
   </G>
   <Rect x="0.5" y="0.5" width="63" height="63" rx="13.5" fill="none" stroke="muted" strokeOpacity="0.3" strokeWidth="1" />
-</AgentLogo>
+</Logo>
+</Blok>
 """
 
 ACTION_LOGOS: dict[str, str] = {
     # A file, its corner folded, and the planes of its series lifting out of it.
     "convert_lif_file_to_datasets": """
-<ActionLogo viewBox="0 0 24 24" title="Convert Leica LIF file to Datasets">
+<Blok kind="action" context="logo">
+<Logo viewBox="0 0 24 24" title="Convert Leica LIF file to Datasets">
   <Path d="M3 4a1.5 1.5 0 0 1 1.5-1.5H9l3 3V12a1.5 1.5 0 0 1-1.5 1.5h-6A1.5 1.5 0 0 1 3 12Z" fill="surface" stroke="ink" strokeWidth="1.5" strokeLinejoin="round" />
   <Path d="M9 2.5V5.5H12" fill="none" stroke="ink" strokeWidth="1.5" strokeLinejoin="round" />
   <Path d="M14 4h3a2 2 0 0 1 2 2v1.5" fill="none" stroke="brand-strong" strokeWidth="1.6" strokeLinecap="round" animate="draw" />
@@ -58,7 +61,8 @@ ACTION_LOGOS: dict[str, str] = {
     <Polygon points="15,12.5 21.5,15.75 15,19 8.5,15.75" fill="brand" animate="float" animateDelay="0.15" />
     <Polygon points="15,9.5 21.5,12.75 15,16 8.5,12.75" fill="brand-strong" animate="float" />
   </G>
-</ActionLogo>
+</Logo>
+</Blok>
 """,
 }
 
