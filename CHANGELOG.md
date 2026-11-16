@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.2.4 (2026-11-16)
+
+### Bug Fixes
+
+- Bloks are self-contained <Blok kind context> trees
+  ([`3c3da2e`](https://github.com/jhnnsrs/lif-converter/commit/3c3da2e6da54f9beda8d77ff63467b7912a2114c))
+
+### Build System
+
+- Lock arkitekt 18
+  ([`da8bef5`](https://github.com/jhnnsrs/lif-converter/commit/da8bef5c852b11da96f8ee9edce52f5721163dd8))
+
+
 ## v1.2.3 (2026-11-15)
 
 ### Bug Fixes
