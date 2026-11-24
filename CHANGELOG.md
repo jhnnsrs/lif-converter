@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.2.5 (2026-11-24)
+
+### Bug Fixes
+
+- Build on arkitekt 18.5.2, rekuest 18, arkitekt-spec 13 and mikro 14.2
+  ([`0f57c97`](https://github.com/jhnnsrs/lif-converter/commit/0f57c975662e182b4a2253ce690fbee59c4ad4b1))
+
+
 ## v1.2.4 (2026-11-16)
 
 ### Bug Fixes
