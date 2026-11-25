@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.2.6 (2026-11-25)
+
+### Bug Fixes
+
+- Runs on arkitekt 19
+  ([`ba6cdbf`](https://github.com/jhnnsrs/lif-converter/commit/ba6cdbfbbb534dec50dfe4c9b72e80f4e13789eb))
+
+
 ## v1.2.5 (2026-11-24)
 
 ### Bug Fixes
